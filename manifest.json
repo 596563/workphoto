@@ -1,0 +1,16 @@
+{
+  "name": "บันทึกภาพงานซ่อม",
+  "short_name": "ถ่ายงานซ่อม",
+  "description": "ถ่ายภาพระหว่างปฏิบัติงาน แล้วอัพโหลดขึ้น SharePoint แผนกอัตโนมัติ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#1f6f43",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

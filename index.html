@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>ถ่ายภาพงานซ่อม</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1f6f43" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<style>
+  :root {
+    --accent: #1f6f43;
+    --bg: #0b0e0c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; background: var(--bg);
+    font-family: "Sarabun", "Noto Sans Thai", system-ui, -apple-system, sans-serif;
+    color: #fff; overflow: hidden;
+  }
+  .stage {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+  }
+  .viewport {
+    position: relative; flex: 1; overflow: hidden; background: #000;
+  }
+  video {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .flash {
+    position: absolute; inset: 0; background: #fff; opacity: 0;
+    pointer-events: none; transition: opacity 120ms ease;
+  }
+  .flash-active { opacity: 0.85; }
+
+  .topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+    z-index: 2;
+  }
+  #status { font-size: 13px; opacity: 0.9; }
+  #queueCount {
+    font-size: 12px; background: var(--accent); padding: 3px 10px;
+    border-radius: 999px; white-space: nowrap;
+  }
+
+  .controls {
+    background: #111;
+    padding: 18px 16px max(18px, env(safe-area-inset-bottom));
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  #shutter {
+    width: 74px; height: 74px; border-radius: 50%;
+    background: #fff; border: 4px solid var(--accent);
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
+  }
+  #shutter:active { transform: scale(0.94); }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="viewport">
+      <video id="camera" autoplay playsinline muted></video>
+      <div id="flash" class="flash"></div>
+      <div class="topbar">
+        <span id="status">กำลังเปิดกล้อง...</span>
+        <span id="queueCount"></span>
+      </div>
+    </div>
+    <div class="controls">
+      <button id="shutter" aria-label="ถ่ายภาพ"></button>
+    </div>
+  </div>
+
+  <canvas id="canvas" hidden></canvas>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
