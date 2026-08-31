@@ -58,6 +58,20 @@
     box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
   }
   #shutter:active { transform: scale(0.94); }
+
+  /* จอแนวนอน: ย้ายแถบปุ่มไปด้านข้างแทนแถบยาวด้านล่าง เพื่อให้เห็นภาพในวิวไฟน์เดอร์เต็มที่ */
+  @media (orientation: landscape) {
+    .stage { flex-direction: row; }
+    .controls {
+      padding:
+        max(16px, env(safe-area-inset-top))
+        max(20px, env(safe-area-inset-right))
+        max(16px, env(safe-area-inset-bottom))
+        max(16px, env(safe-area-inset-left));
+    }
+    /* สลับไปฝั่งซ้ายเมื่อหมุนเครื่องอีกทาง (คุมด้วย JS ผ่าน screen.orientation) */
+    .stage.flip-controls { flex-direction: row-reverse; }
+  }
 </style>
 </head>
 <body>

@@ -140,50 +140,127 @@ function updateQueueUI(n) {
   queueEl.textContent = n > 0 ? `รอส่ง ${n} รูป` : "";
 }
 
+let imageCapture = null;
+
 async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
+      video: {
+        facingMode: { ideal: "environment" },
+        // ขอความละเอียดสูงสุดเท่าที่กล้องรองรับ (เบราว์เซอร์จะลดลงเองถ้ากล้องทำไม่ได้)
+        width: { ideal: 4096 },
+        height: { ideal: 2160 },
+      },
       audio: false,
     });
     videoEl.srcObject = stream;
+
+    // ถ้าเครื่องรองรับ ImageCapture ให้ใช้ถ่ายภาพนิ่งเต็มความละเอียดจากเซนเซอร์
+    // (คมชัดกว่าการแคปเจอร์เฟรมจากวิดีโอสตรีมมาก) ถ้าไม่รองรับจะ fallback เป็น canvas
+    const [track] = stream.getVideoTracks();
+    if ("ImageCapture" in window && track) {
+      try {
+        imageCapture = new ImageCapture(track);
+      } catch (e) {
+        imageCapture = null;
+      }
+    }
   } catch (e) {
     setStatus("เปิดกล้องไม่ได้: " + e.message);
   }
 }
 
-function capture() {
-  const w = videoEl.videoWidth;
-  const h = videoEl.videoHeight;
-  if (!w || !h) return;
-  canvasEl.width = w;
-  canvasEl.height = h;
-  canvasEl.getContext("2d").drawImage(videoEl, 0, 0, w, h);
+// ถ่ายภาพด้วยการแคปเจอร์เฟรมจากวิดีโอสตรีม (fallback สำหรับเครื่องที่ไม่รองรับ ImageCapture)
+function captureViaCanvas() {
+  return new Promise((resolve, reject) => {
+    const w = videoEl.videoWidth;
+    const h = videoEl.videoHeight;
+    if (!w || !h) return reject(new Error("วิดีโอยังไม่พร้อม"));
+    canvasEl.width = w;
+    canvasEl.height = h;
+    canvasEl.getContext("2d").drawImage(videoEl, 0, 0, w, h);
+    canvasEl.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("แปลงภาพไม่สำเร็จ"))),
+      "image/jpeg",
+      0.92
+    );
+  });
+}
 
-  // เอฟเฟกต์ชัตเตอร์
+// ภาพจาก ImageCapture.takePhoto() อาจมีแค่ "ป้าย EXIF บอกทิศทาง" ติดมาแทนการหมุนพิกเซลจริง
+// ซึ่งโปรแกรมดูรูปหลายตัว (เช่น SharePoint) ไม่อ่านป้ายนี้ ทำให้เห็นภาพเอียง/นอนผิดทาง
+// ฟังก์ชันนี้จะถอดรหัสภาพโดยหมุนพิกเซลจริงตามป้าย EXIF ให้เรียบร้อย แล้วส่งออกเป็น JPEG ใหม่
+// ที่ไม่มีป้าย EXIF ติดไปด้วย รับประกันว่าถูกทางไม่ว่าปลายทางจะอ่าน EXIF หรือไม่ก็ตาม
+async function normalizeOrientation(blob) {
+  try {
+    const bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
+    canvasEl.width = bitmap.width;
+    canvasEl.height = bitmap.height;
+    canvasEl.getContext("2d").drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    return await new Promise((resolve, reject) =>
+      canvasEl.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("แปลงภาพไม่สำเร็จ"))),
+        "image/jpeg",
+        0.92
+      )
+    );
+  } catch (e) {
+    console.error("normalize orientation failed, using original blob", e);
+    return blob; // เบราว์เซอร์เก่ามากอาจไม่รองรับ - ใช้ภาพเดิมไปก่อนดีกว่าไม่ได้ภาพเลย
+  }
+}
+
+async function capture() {
+  // เอฟเฟกต์ชัตเตอร์ - ให้ผู้ใช้เห็นทันทีโดยไม่ต้องรอถ่ายเสร็จ
   flashEl.classList.add("flash-active");
   setTimeout(() => flashEl.classList.remove("flash-active"), 150);
 
-  canvasEl.toBlob(
-    async (blob) => {
-      const now = new Date();
-      const item = {
-        blob,
-        filename: timeFilename(now),
-        monthFolder: monthFolderName(now),
-        dayFolder: dayFolderName(now),
-        capturedAt: now.toISOString(),
-      };
-      await addPending(item);
-      const items = await getAllPending();
-      updateQueueUI(items.length);
-      setStatus(navigator.onLine ? "บันทึกแล้ว กำลังส่ง..." : "ออฟไลน์ - เก็บรูปไว้ก่อน");
-      syncPending();
-    },
-    "image/jpeg",
-    0.85
-  );
+  let blob;
+  try {
+    if (imageCapture) {
+      blob = await imageCapture.takePhoto();
+      blob = await normalizeOrientation(blob);
+    } else {
+      blob = await captureViaCanvas();
+    }
+  } catch (e) {
+    console.error("capture error, falling back to canvas", e);
+    try {
+      blob = await captureViaCanvas();
+    } catch (e2) {
+      setStatus("ถ่ายภาพไม่สำเร็จ: " + e2.message);
+      return;
+    }
+  }
+
+  const now = new Date();
+  const item = {
+    blob,
+    filename: timeFilename(now),
+    monthFolder: monthFolderName(now),
+    dayFolder: dayFolderName(now),
+    capturedAt: now.toISOString(),
+  };
+  await addPending(item);
+  const items = await getAllPending();
+  updateQueueUI(items.length);
+  setStatus(navigator.onLine ? "บันทึกแล้ว กำลังส่ง..." : "ออฟไลน์ - เก็บรูปไว้ก่อน");
+  syncPending();
 }
+
+// -------------------- ปรับฝั่งแถบปุ่มตามทิศทางการหมุนเครื่องจริง --------------------
+const stageEl = document.querySelector(".stage");
+function updateControlsSide() {
+  const type = (screen.orientation && screen.orientation.type) || "";
+  // landscape-secondary = หมุนเครื่องไปอีกทางหนึ่ง (สลับข้างแถบปุ่มให้ตรงกัน)
+  stageEl.classList.toggle("flip-controls", type === "landscape-secondary");
+}
+if (screen.orientation) {
+  screen.orientation.addEventListener("change", updateControlsSide);
+}
+window.addEventListener("resize", updateControlsSide);
+updateControlsSide();
 
 async function main() {
   await startCamera();
@@ -203,5 +280,27 @@ async function main() {
 main();
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js").catch(console.error);
+  // ปัญหาที่พบ: แอพที่ "เพิ่มลงหน้าจอ" (standalone) มักถูก OS พักไว้เบื้องหลัง
+  // (ไม่ได้ปิดจริง) หน้าเว็บเดิมจึงยังรัน app.js เวอร์ชันเก่าค้างอยู่ในหน่วยความจำ
+  // แม้ Service Worker ตัวใหม่จะเข้าคุมหน้าแล้ว (skipWaiting + clients.claim)
+  // ก็ไม่ได้แปลว่าหน้าเว็บที่เปิดค้างจะโหลดโค้ดใหม่เองอัตโนมัติ
+  // วิธีแก้: ฟัง event "controllerchange" แล้วสั่ง reload หน้าเองทันทีที่มี SW ใหม่คุม
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return; // กัน reload วนซ้ำ (controllerchange อาจยิงได้มากกว่า 1 ครั้ง)
+    refreshing = true;
+    window.location.reload();
+  });
+
+  navigator.serviceWorker
+    .register("./sw.js")
+    .then((reg) => {
+      // ปกติเบราว์เซอร์จะไม่เช็ค sw.js ใหม่บ่อยกว่า 1 ครั้ง/24 ชม. เอง
+      // สั่ง update() ตรงๆ ทุกครั้งที่เปิด/กลับมาที่แอพ เพื่อให้เช็คทันทีเสมอ
+      reg.update();
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) reg.update();
+      });
+    })
+    .catch(console.error);
 }
